@@ -5,7 +5,7 @@ setup(
     version="0.1.0",
     packages=find_packages(),
     install_requires=[
-        # Requirements will be read from requirements.txt
+        # from requirements.txt
     ],
     author="Your Name",
     author_email="your.email@example.com",

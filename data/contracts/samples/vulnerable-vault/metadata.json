@@ -1,0 +1,9 @@
+{
+  "id": "vulnerable-vault",
+  "name": "VulnerableVault",
+  "description": "A vault contract with a reentrancy vulnerability",
+  "has_vulnerabilities": true,
+  "vulnerability_types": [
+    "reentrancy"
+  ]
+}

@@ -1,0 +1,6 @@
+{
+  "id": "secure-vault",
+  "name": "SecureVault",
+  "description": "A secure vault contract with reentrancy protection",
+  "has_vulnerabilities": false
+}

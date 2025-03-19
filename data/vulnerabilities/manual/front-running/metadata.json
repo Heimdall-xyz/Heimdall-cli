@@ -1,0 +1,12 @@
+{
+  "id": "front-running",
+  "name": "Front-Running Vulnerability",
+  "category": "Transaction Ordering",
+  "severity": "Medium",
+  "description": "Lack of protection against transaction order manipulation, allowing attackers to benefit from advance knowledge of pending transactions.",
+  "example_code": "\n            // Vulnerable code\n            function buyTokens() public payable {\n                // Price is determined at execution time\n                uint256 price = getCurrentPrice();\n                uint256 tokenAmount = msg.value / price;\n                \n                // Vulnerable to front-running\n                balances[msg.sender] += tokenAmount;\n            }\n            \n            // More resistant code\n            function buyTokens(uint256 maxPrice) public payable {\n                uint256 price = getCurrentPrice();\n                // Buyer specifies maximum price they're willing to pay\n                require(price <= maxPrice, \"Price too high\");\n                uint256 tokenAmount = msg.value / price;\n                balances[msg.sender] += tokenAmount;\n            }\n        ",
+  "detection_pattern": "Price-sensitive operations without slippage protection or commit-reveal patterns",
+  "references": [
+    "https://consensys.github.io/smart-contract-best-practices/attacks/front-running/"
+  ]
+}

@@ -1,0 +1,12 @@
+{
+  "id": "access-control",
+  "name": "Missing Access Control",
+  "category": "Authorization",
+  "severity": "Critical",
+  "description": "Critical functions lack proper authorization checks, allowing unauthorized users to execute privileged operations.",
+  "example_code": "\n            // Vulnerable code\n            function withdrawFunds() public {\n                // No access control\n                payable(msg.sender).transfer(address(this).balance);\n            }\n            \n            // Fixed code\n            function withdrawFunds() public {\n                // Check that caller is the owner\n                require(msg.sender == owner, \"Not authorized\");\n                payable(msg.sender).transfer(address(this).balance);\n            }\n        ",
+  "detection_pattern": "Functions that modify critical state or transfer value without authorization checks",
+  "references": [
+    "https://consensys.github.io/smart-contract-best-practices/development-recommendations/access-control/"
+  ]
+}

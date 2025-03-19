@@ -1,0 +1,62 @@
+[
+  {
+    "id": "reentrancy",
+    "name": "Reentrancy",
+    "category": "Control Flow",
+    "severity": "High",
+    "description": "Occurs when external contract calls are allowed to make new calls back to the calling contract before the first execution is complete, potentially leading to multiple withdrawals or other unexpected logic flows.",
+    "example_code": "\n            // Vulnerable code\n            function withdraw(uint256 amount) public {\n                require(balances[msg.sender] >= amount, \"Insufficient balance\");\n                \n                // Send funds before updating state\n                (bool success, ) = msg.sender.call{value: amount}(\"\");\n                require(success, \"Transfer failed\");\n                \n                // State update happens after external call\n                balances[msg.sender] -= amount;\n            }\n            \n            // Fixed code\n            function withdraw(uint256 amount) public {\n                require(balances[msg.sender] >= amount, \"Insufficient balance\");\n                \n                // Update state before external call\n                balances[msg.sender] -= amount;\n                \n                // Send funds after updating state\n                (bool success, ) = msg.sender.call{value: amount}(\"\");\n                require(success, \"Transfer failed\");\n            }\n        ",
+    "detection_pattern": "External calls such as call(), send(), or transfer() occurring before state changes",
+    "references": [
+      "https://consensys.github.io/smart-contract-best-practices/attacks/reentrancy/"
+    ]
+  },
+  {
+    "id": "access-control",
+    "name": "Missing Access Control",
+    "category": "Authorization",
+    "severity": "Critical",
+    "description": "Critical functions lack proper authorization checks, allowing unauthorized users to execute privileged operations.",
+    "example_code": "\n            // Vulnerable code\n            function withdrawFunds() public {\n                // No access control\n                payable(msg.sender).transfer(address(this).balance);\n            }\n            \n            // Fixed code\n            function withdrawFunds() public {\n                // Check that caller is the owner\n                require(msg.sender == owner, \"Not authorized\");\n                payable(msg.sender).transfer(address(this).balance);\n            }\n        ",
+    "detection_pattern": "Functions that modify critical state or transfer value without authorization checks",
+    "references": [
+      "https://consensys.github.io/smart-contract-best-practices/development-recommendations/access-control/"
+    ]
+  },
+  {
+    "id": "arithmetic",
+    "name": "Arithmetic Issues",
+    "category": "Data Validation",
+    "severity": "High",
+    "description": "Integer overflow, underflow, or precision loss in arithmetic operations leading to unexpected behavior or asset loss.",
+    "example_code": "\n            // Vulnerable code (pre-Solidity 0.8.0)\n            function transfer(address to, uint256 amount) public {\n                require(balances[msg.sender] >= amount, \"Insufficient balance\");\n                balances[msg.sender] -= amount;\n                balances[to] += amount; // Potential overflow\n            }\n            \n            // Fixed code for pre-0.8.0\n            function transfer(address to, uint256 amount) public {\n                require(balances[msg.sender] >= amount, \"Insufficient balance\");\n                balances[msg.sender] -= amount;\n                require(balances[to] + amount >= balances[to], \"Overflow check\");\n                balances[to] += amount;\n            }\n        ",
+    "detection_pattern": "Arithmetic operations without overflow/underflow checks in versions before Solidity 0.8.0",
+    "references": [
+      "https://consensys.github.io/smart-contract-best-practices/development-recommendations/general/integer-overflow-underflow/"
+    ]
+  },
+  {
+    "id": "flash-loan-attack",
+    "name": "Flash Loan Attack Vulnerability",
+    "category": "DeFi",
+    "severity": "Critical",
+    "description": "Price manipulation using flash loans to exploit pricing mechanisms or oracle data, particularly in DeFi protocols.",
+    "example_code": "\n            // Vulnerable code\n            function swap(address token, uint256 amount) public {\n                // Using a single price source without time-weighted checks\n                uint price = singleSourceOracle.getPrice(token);\n                uint returnAmount = amount * price / 1e18;\n                \n                // Vulnerable to flash loan price manipulation\n                token.transferFrom(msg.sender, address(this), amount);\n                stablecoin.transfer(msg.sender, returnAmount);\n            }\n            \n            // More resilient code\n            function swap(address token, uint256 amount) public {\n                // Using time-weighted average price from multiple sources\n                uint price = twapOracle.getAveragePrice(token);\n                uint returnAmount = amount * price / 1e18;\n                \n                // Add slippage protection\n                require(returnAmount <= maxSwapAmount, \"Exceeds max swap\");\n                \n                token.transferFrom(msg.sender, address(this), amount);\n                stablecoin.transfer(msg.sender, returnAmount);\n            }\n        ",
+    "detection_pattern": "Single-block price oracle usage without manipulation protection",
+    "references": [
+      "https://chain.link/education-hub/flash-loans"
+    ]
+  },
+  {
+    "id": "front-running",
+    "name": "Front-Running Vulnerability",
+    "category": "Transaction Ordering",
+    "severity": "Medium",
+    "description": "Lack of protection against transaction order manipulation, allowing attackers to benefit from advance knowledge of pending transactions.",
+    "example_code": "\n            // Vulnerable code\n            function buyTokens() public payable {\n                // Price is determined at execution time\n                uint256 price = getCurrentPrice();\n                uint256 tokenAmount = msg.value / price;\n                \n                // Vulnerable to front-running\n                balances[msg.sender] += tokenAmount;\n            }\n            \n            // More resistant code\n            function buyTokens(uint256 maxPrice) public payable {\n                uint256 price = getCurrentPrice();\n                // Buyer specifies maximum price they're willing to pay\n                require(price <= maxPrice, \"Price too high\");\n                uint256 tokenAmount = msg.value / price;\n                balances[msg.sender] += tokenAmount;\n            }\n        ",
+    "detection_pattern": "Price-sensitive operations without slippage protection or commit-reveal patterns",
+    "references": [
+      "https://consensys.github.io/smart-contract-best-practices/attacks/front-running/"
+    ]
+  }
+]

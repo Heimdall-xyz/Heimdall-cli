@@ -1,0 +1,12 @@
+{
+  "id": "flash-loan-attack",
+  "name": "Flash Loan Attack Vulnerability",
+  "category": "DeFi",
+  "severity": "Critical",
+  "description": "Price manipulation using flash loans to exploit pricing mechanisms or oracle data, particularly in DeFi protocols.",
+  "example_code": "\n            // Vulnerable code\n            function swap(address token, uint256 amount) public {\n                // Using a single price source without time-weighted checks\n                uint price = singleSourceOracle.getPrice(token);\n                uint returnAmount = amount * price / 1e18;\n                \n                // Vulnerable to flash loan price manipulation\n                token.transferFrom(msg.sender, address(this), amount);\n                stablecoin.transfer(msg.sender, returnAmount);\n            }\n            \n            // More resilient code\n            function swap(address token, uint256 amount) public {\n                // Using time-weighted average price from multiple sources\n                uint price = twapOracle.getAveragePrice(token);\n                uint returnAmount = amount * price / 1e18;\n                \n                // Add slippage protection\n                require(returnAmount <= maxSwapAmount, \"Exceeds max swap\");\n                \n                token.transferFrom(msg.sender, address(this), amount);\n                stablecoin.transfer(msg.sender, returnAmount);\n            }\n        ",
+  "detection_pattern": "Single-block price oracle usage without manipulation protection",
+  "references": [
+    "https://chain.link/education-hub/flash-loans"
+  ]
+}

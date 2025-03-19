@@ -1,0 +1,12 @@
+{
+  "id": "arithmetic",
+  "name": "Arithmetic Issues",
+  "category": "Data Validation",
+  "severity": "High",
+  "description": "Integer overflow, underflow, or precision loss in arithmetic operations leading to unexpected behavior or asset loss.",
+  "example_code": "\n            // Vulnerable code (pre-Solidity 0.8.0)\n            function transfer(address to, uint256 amount) public {\n                require(balances[msg.sender] >= amount, \"Insufficient balance\");\n                balances[msg.sender] -= amount;\n                balances[to] += amount; // Potential overflow\n            }\n            \n            // Fixed code for pre-0.8.0\n            function transfer(address to, uint256 amount) public {\n                require(balances[msg.sender] >= amount, \"Insufficient balance\");\n                balances[msg.sender] -= amount;\n                require(balances[to] + amount >= balances[to], \"Overflow check\");\n                balances[to] += amount;\n            }\n        ",
+  "detection_pattern": "Arithmetic operations without overflow/underflow checks in versions before Solidity 0.8.0",
+  "references": [
+    "https://consensys.github.io/smart-contract-best-practices/development-recommendations/general/integer-overflow-underflow/"
+  ]
+}

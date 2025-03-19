@@ -1,0 +1,12 @@
+{
+  "id": "reentrancy",
+  "name": "Reentrancy",
+  "category": "Control Flow",
+  "severity": "High",
+  "description": "Occurs when external contract calls are allowed to make new calls back to the calling contract before the first execution is complete, potentially leading to multiple withdrawals or other unexpected logic flows.",
+  "example_code": "\n            // Vulnerable code\n            function withdraw(uint256 amount) public {\n                require(balances[msg.sender] >= amount, \"Insufficient balance\");\n                \n                // Send funds before updating state\n                (bool success, ) = msg.sender.call{value: amount}(\"\");\n                require(success, \"Transfer failed\");\n                \n                // State update happens after external call\n                balances[msg.sender] -= amount;\n            }\n            \n            // Fixed code\n            function withdraw(uint256 amount) public {\n                require(balances[msg.sender] >= amount, \"Insufficient balance\");\n                \n                // Update state before external call\n                balances[msg.sender] -= amount;\n                \n                // Send funds after updating state\n                (bool success, ) = msg.sender.call{value: amount}(\"\");\n                require(success, \"Transfer failed\");\n            }\n        ",
+  "detection_pattern": "External calls such as call(), send(), or transfer() occurring before state changes",
+  "references": [
+    "https://consensys.github.io/smart-contract-best-practices/attacks/reentrancy/"
+  ]
+}

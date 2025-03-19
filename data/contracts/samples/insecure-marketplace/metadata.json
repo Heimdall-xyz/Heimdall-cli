@@ -1,0 +1,9 @@
+{
+  "id": "insecure-marketplace",
+  "name": "InsecureMarketplace",
+  "description": "A marketplace contract with access control issues",
+  "has_vulnerabilities": true,
+  "vulnerability_types": [
+    "access-control"
+  ]
+}

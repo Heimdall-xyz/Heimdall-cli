@@ -1,0 +1,9 @@
+{
+  "id": "price-oracle",
+  "name": "VulnerablePriceOracle",
+  "description": "A price oracle vulnerable to flash loan attacks",
+  "has_vulnerabilities": true,
+  "vulnerability_types": [
+    "flash-loan-attack"
+  ]
+}

@@ -1,0 +1,6 @@
+{
+  "id": "simple-token",
+  "name": "SimpleToken",
+  "description": "A basic ERC20-like token implementation",
+  "has_vulnerabilities": false
+}

@@ -1,73 +1,436 @@
 """
-Parse Solidity code for further analysis.
+Parse and analyze Solidity smart contracts using solcx.
 """
 import json
-import subprocess
+import os
 import tempfile
 from pathlib import Path
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List, Optional, Tuple
+import solcx
 
 class SolidityParser:
-    """Parser for Solidity code."""
+    """
+    Parser for Solidity code that extracts AST and other structural information.
+    Uses solcx to interface with the Solidity compiler.
+    """
     
-    @staticmethod
-    def parse_code(code: str) -> Optional[Dict[str, Any]]:
+    def __init__(self, solc_version: str = "0.8.29"):
         """
-        Parse Solidity code and return AST.
-        Uses solc compiler to generate AST.
-        """
-        with tempfile.NamedTemporaryFile(suffix='.sol', mode='w+') as tmp:
-            tmp.write(code)
-            tmp.flush()
-            
-            try:
-                # Run solc to generate AST in JSON format
-                result = subprocess.run(
-                    ['solc', '--ast-json', tmp.name],
-                    capture_output=True,
-                    text=True,
-                    check=True
-                )
-                
-                # Parse the output to extract the AST
-                ast_json_str = result.stdout
-                # Actual parsing would need to handle solc's specific output format
-                # This is a simplified version
-                ast_data = json.loads(ast_json_str)
-                return ast_data
-                
-            except subprocess.CalledProcessError as e:
-                print(f"Error parsing Solidity code: {e}")
-                print(f"stderr: {e.stderr}")
-                return None
-            except json.JSONDecodeError:
-                print("Error decoding AST JSON")
-                return None
-    
-    @staticmethod
-    def extract_functions(ast: Dict[str, Any]) -> List[Dict[str, Any]]:
-        """Extract function definitions from AST."""
-        functions = []
+        Initialize the parser with a specific Solidity compiler version.
         
-        # This is a placeholder - actual implementation would traverse the AST
-        # to find function definitions based on solc's AST format
+        Args:
+            solc_version: Solc version to use (e.g., "0.8.29")
+        """
+        self.solc_version = solc_version
+        self._ensure_solc_version()
+    
+    def _ensure_solc_version(self):
+        """Ensure the specified solc version is installed."""
+        try:
+        # Check if the version is already installed
+            installed_versions = [str(v) for v in solcx.get_installed_solc_versions()]
+            if self.solc_version not in installed_versions:
+                print(f"Installing solc version {self.solc_version}...")
+                solcx.install_solc(self.solc_version)
+        
+        # Set as the active version
+            solcx.set_solc_version(self.solc_version)
+            print(f"Using solc version: {self.solc_version}")
+        
+        except Exception as e:
+            print(f"Error setting up solc: {e}")
+    
+    def parse_code(self, code: str, output_dir: Optional[Path] = None) -> Dict[str, Any]:
+        """
+        Parse Solidity code and return comprehensive information including AST.
+        
+        Args:
+            code: Solidity source code to parse
+            output_dir: Optional directory to save the output files
+        
+        Returns:
+            Dictionary containing parsed information about the contract
+        """
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            tmp_path = Path(tmpdirname)
+            contract_file = tmp_path / "temp_contract.sol"
+            
+            # Write the code to a temporary file
+            with open(contract_file, "w") as f:
+                f.write(code)
+            
+            # Determine output directory
+            if output_dir is None:
+                output_dir = tmp_path
+            else:
+                os.makedirs(output_dir, exist_ok=True)
+            
+            # Use solcx to compile and get information
+            try:
+                # Get the AST using solcx
+                ast_json = solcx.compile_standard({
+                    "language": "Solidity",
+                    "sources": {
+                        str(contract_file): {
+                            "content": code
+                        }
+                    },
+                    "settings": {
+                        "outputSelection": {
+                            "*": {
+                                "*": [
+                                    "abi",
+                                    "metadata",
+                                    "evm.bytecode",
+                                    "evm.methodIdentifiers"
+                                ],
+                                "": [
+                                    "ast"
+                                ]
+                            }
+                        }
+                    }
+                })
+                
+                # Extract basic info using our helper methods
+                parsed_data = {
+                    "ast": ast_json,
+                    "basic_info": self._extract_basic_info(code, ast_json)
+                }
+                
+                return parsed_data
+                
+            except Exception as e:
+                print(f"Error compiling with solcx: {e}")
+                return {"error": str(e)}
+    
+    def _extract_basic_info(self, code: str, ast_json: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Extract basic information about the contract from the code and AST.
+        
+        Args:
+            code: Original Solidity source code
+            ast_json: AST JSON generated by solcx
+        
+        Returns:
+            Dictionary with basic contract information
+        """
+        info = {
+            "pragma": self._extract_pragma(code),
+            "contracts": self._extract_contract_names(code),
+            "imports": self._extract_imports(code),
+            "functions": self._extract_functions(code)
+        }
+        return info
+    
+    def _extract_pragma(self, code: str) -> str:
+        """Extract the pragma statement from the code."""
+        for line in code.split("\n"):
+            if line.strip().startswith("pragma solidity"):
+                return line.strip()
+        return ""
+    
+    def _extract_contract_names(self, code: str) -> List[str]:
+        """Extract the names of all contracts defined in the code."""
+        contracts = []
+        lines = code.split("\n")
+        
+        for i, line in enumerate(lines):
+            line = line.strip()
+            
+            # Look for contract, library, or interface definitions
+            if (line.startswith("contract ") or 
+                line.startswith("library ") or 
+                line.startswith("interface ")):
+                
+                parts = line.split(" ")
+                if len(parts) >= 2:
+                    # Extract the name, removing any inheritance or opening brace
+                    name = parts[1].split("{")[0].strip()
+                    name = name.split("is")[0].strip()
+                    contracts.append(name)
+        
+        return contracts
+    
+    def _extract_imports(self, code: str) -> List[str]:
+        """Extract all import statements from the code."""
+        imports = []
+        
+        for line in code.split("\n"):
+            line = line.strip()
+            if line.startswith("import "):
+                imports.append(line)
+        
+        return imports
+    
+    def _extract_functions(self, code: str) -> List[Dict[str, Any]]:
+        """
+        Extract basic information about functions defined in the code.
+        This is a simplified extraction that doesn't use the AST.
+        """
+        functions = []
+        lines = code.split("\n")
+        
+        for i, line in enumerate(lines):
+            line = line.strip()
+            
+            # Look for function definitions
+            if "function " in line and "(" in line:
+                # Extract function name and signature
+                parts = line.split("function ")[1].split("(")
+                if len(parts) >= 2:
+                    name = parts[0].strip()
+                    signature = "(" + parts[1].split(")")[0].strip() + ")"
+                    
+                    # Determine visibility and mutability
+                    visibility = "public"  # Default
+                    if "private" in line:
+                        visibility = "private"
+                    elif "internal" in line:
+                        visibility = "internal"
+                    elif "external" in line:
+                        visibility = "external"
+                    
+                    # Check for view or pure
+                    mutability = ""
+                    if "view" in line:
+                        mutability = "view"
+                    elif "pure" in line:
+                        mutability = "pure"
+                    
+                    functions.append({
+                        "name": name,
+                        "signature": signature,
+                        "visibility": visibility,
+                        "mutability": mutability,
+                        "line": i + 1
+                    })
         
         return functions
     
-    @staticmethod
-    def extract_contracts(ast: Dict[str, Any]) -> List[Dict[str, Any]]:
-        """Extract contract definitions from AST."""
-        contracts = []
+    def generate_control_flow_graph(self, ast: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Generate a control flow graph from the AST.
+        This is a simplified placeholder that would be expanded in a real implementation.
         
-        # This is a placeholder - actual implementation would traverse the AST
-        # to find contract definitions
+        Args:
+            ast: The AST generated by solcx
+        
+        Returns:
+            Dictionary representing the control flow graph
+        """
+        # Placeholder for CFG generation
+        cfg = {
+            "nodes": [],
+            "edges": [],
+            "entry_points": [],
+            "exit_points": []
+        }
+        
+        # In a real implementation, this would analyze the AST to build a CFG
+        
+        return cfg
+    
+    def chunk_code_for_analysis(self, code: str, chunk_size: int = 1000) -> List[Dict[str, Any]]:
+        """
+        Divide the code into manageable chunks for analysis by LLMs or other tools.
+        Tries to make logical divisions based on contract structure.
+        
+        Args:
+            code: The Solidity source code
+            chunk_size: Target size for each chunk
+            
+        Returns:
+            List of dictionaries containing code chunks and their metadata
+        """
+        chunks = []
+        
+        # Try to split by contracts first
+        contracts = self._split_by_contracts(code)
+        
+        for contract_name, contract_code in contracts.items():
+            # If contract is small enough, use it as a chunk
+            if len(contract_code) <= chunk_size:
+                chunks.append({
+                    "name": contract_name,
+                    "type": "contract",
+                    "code": contract_code,
+                    "size": len(contract_code)
+                })
+            else:
+                # Otherwise, split the contract by functions
+                function_chunks = self._split_by_functions(contract_name, contract_code, chunk_size)
+                chunks.extend(function_chunks)
+        
+        return chunks
+    
+    def _split_by_contracts(self, code: str) -> Dict[str, str]:
+        """
+        Split the code by contract definitions.
+        
+        Args:
+            code: The Solidity source code
+            
+        Returns:
+            Dictionary mapping contract names to their code
+        """
+        contracts = {}
+        
+        # Simple approach - this would be more robust in a real implementation
+        lines = code.split("\n")
+        current_contract = None
+        contract_code = []
+        brace_count = 0
+        
+        for line in lines:
+            # Check for contract definition
+            stripped = line.strip()
+            if current_contract is None and (
+                stripped.startswith("contract ") or 
+                stripped.startswith("library ") or 
+                stripped.startswith("interface ")):
+                
+                # Extract contract name
+                parts = stripped.split(" ")
+                if len(parts) >= 2:
+                    name = parts[1].split("{")[0].strip()
+                    name = name.split("is")[0].strip()
+                    current_contract = name
+                    contract_code = [line]
+                    
+                    # Count opening braces
+                    brace_count = line.count("{") - line.count("}")
+                    
+                    continue
+            
+            # If we're inside a contract, add the line
+            if current_contract is not None:
+                contract_code.append(line)
+                
+                # Update brace count
+                brace_count += line.count("{") - line.count("}")
+                
+                # If braces are balanced, we've reached the end of the contract
+                if brace_count == 0:
+                    contracts[current_contract] = "\n".join(contract_code)
+                    current_contract = None
+                    contract_code = []
+        
+        # Handle case where the file ended while inside a contract
+        if current_contract is not None:
+            contracts[current_contract] = "\n".join(contract_code)
         
         return contracts
+    
+    def _split_by_functions(self, contract_name: str, contract_code: str, chunk_size: int) -> List[Dict[str, Any]]:
+        """
+        Split a contract's code by function definitions.
+        
+        Args:
+            contract_name: Name of the contract
+            contract_code: The contract's code
+            chunk_size: Target size for each chunk
+            
+        Returns:
+            List of dictionaries containing function chunks
+        """
+        chunks = []
+        
+        # Extract the contract header (everything before the first function)
+        header_end = contract_code.find("function ")
+        if header_end == -1:
+            # No functions found, return the whole contract
+            return [{
+                "name": contract_name,
+                "type": "contract",
+                "code": contract_code,
+                "size": len(contract_code)
+            }]
+        
+        header = contract_code[:header_end]
+        
+        # Add the header as a chunk
+        chunks.append({
+            "name": f"{contract_name}_header",
+            "type": "contract_header",
+            "code": header,
+            "size": len(header)
+        })
+        
+        # Find all function definitions
+        remaining_code = contract_code[header_end:]
+        function_chunks = self._extract_function_chunks(contract_name, remaining_code)
+        
+        # Add each function as a chunk
+        for func_name, func_code in function_chunks.items():
+            chunks.append({
+                "name": f"{contract_name}_{func_name}",
+                "type": "function",
+                "code": func_code,
+                "size": len(func_code)
+            })
+        
+        return chunks
+    
+    def _extract_function_chunks(self, contract_name: str, code: str) -> Dict[str, str]:
+        """
+        Extract individual functions from the code.
+        
+        Args:
+            contract_name: Name of the contract
+            code: The contract's code
+            
+        Returns:
+            Dictionary mapping function names to their code
+        """
+        functions = {}
+        
+        # Simple approach - this would be more robust in a real implementation
+        lines = code.split("\n")
+        current_function = None
+        function_code = []
+        brace_count = 0
+        
+        for line in lines:
+            # Check for function definition
+            stripped = line.strip()
+            if current_function is None and "function " in stripped and "(" in stripped:
+                # Extract function name
+                parts = stripped.split("function ")[1].split("(")
+                if len(parts) >= 1:
+                    name = parts[0].strip()
+                    current_function = name
+                    function_code = [line]
+                    
+                    # Count opening braces
+                    brace_count = line.count("{") - line.count("}")
+                    
+                    continue
+            
+            # If we're inside a function, add the line
+            if current_function is not None:
+                function_code.append(line)
+                
+                # Update brace count
+                brace_count += line.count("{") - line.count("}")
+                
+                # If braces are balanced, we've reached the end of the function
+                if brace_count == 0:
+                    functions[current_function] = "\n".join(function_code)
+                    current_function = None
+                    function_code = []
+        
+        # Handle case where the file ended while inside a function
+        if current_function is not None:
+            functions[current_function] = "\n".join(function_code)
+        
+        return functions
 
 
 # Example usage
 if __name__ == "__main__":
     sample_code = """
+    // SPDX-License-Identifier: MIT
     pragma solidity ^0.8.0;
     
     contract SimpleStorage {
@@ -83,11 +446,19 @@ if __name__ == "__main__":
     }
     """
     
-    parser = SolidityParser()
-    ast = parser.parse_code(sample_code)
+    parser = SolidityParser(solc_version="0.8.29")
+    parsed_data = parser.parse_code(sample_code)
     
-    if ast:
-        print("Successfully parsed Solidity code")
-        contracts = parser.extract_contracts(ast)
-        functions = parser.extract_functions(ast)
-        print(f"Found {len(contracts)} contracts and {len(functions)} functions")
+    print("Basic Info:")
+    print(json.dumps(parsed_data.get("basic_info", {}), indent=2))
+    
+    # Generate control flow graph
+    if "ast" in parsed_data:
+        cfg = parser.generate_control_flow_graph(parsed_data["ast"])
+        print("\nControl Flow Graph:")
+        print(json.dumps(cfg, indent=2))
+    
+    # Chunk the code
+    chunks = parser.chunk_code_for_analysis(sample_code)
+    print("\nCode Chunks:")
+    print(json.dumps(chunks, indent=2))
